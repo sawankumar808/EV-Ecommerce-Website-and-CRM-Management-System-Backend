@@ -10,8 +10,8 @@ from .serializers import (
 
 
 class VendorViewSet(viewsets.ModelViewSet):
-    permission_classes=[AdminSales]
-    serializer_class = VendorSerializer  # <-- YE MISSING THA, JISSE 500 ERROR AA RAHA THA
+    permission_classes = [AdminSales]
+    serializer_class = VendorSerializer 
     queryset = Vendor.objects.all().order_by("-registered_at")
     filterset_fields = ["status", "business_type", "assigned_salesperson", "city", "state"]
     search_fields = ["business_name", "contact_person", "mobile_number", "email", "gst_number"]
@@ -31,9 +31,9 @@ class VendorViewSet(viewsets.ModelViewSet):
         if getattr(user, 'role', '') == 'ADMIN' or user.is_superuser:
             return Vendor.objects.all().order_by("-registered_at")
         
-        # 2. SALES User ko sirf unki assigned vendors milenge
+        # 2. SALES User ke liye: Saare vendors dikhayein (taaki unhein list empty na mile)
         if getattr(user, 'role', '') == 'SALES':
-            return Vendor.objects.filter(assigned_salesperson=user).order_by("-registered_at")
+            return Vendor.objects.all().order_by("-registered_at")
             
         # 3. Agar User VENDOR role wala hai, toh sirf apna vendor profile dikhao
         if getattr(user, 'role', '') == 'VENDOR':
@@ -41,7 +41,6 @@ class VendorViewSet(viewsets.ModelViewSet):
 
         return Vendor.objects.none()
 
-    
     def _change_status(self, request, new_status, note=""):
         if getattr(request.user, "role", None) != "ADMIN" and not request.user.is_superuser:
             return Response({"detail":"Only CRM Admin can change vendor status."}, status=403)
@@ -87,7 +86,7 @@ class VendorViewSet(viewsets.ModelViewSet):
 
 
 class VendorDocumentViewSet(viewsets.ModelViewSet):
-    permission_classes=[AdminOnly]
+    permission_classes = [AdminOnly]
     queryset = VendorDocument.objects.all()
     serializer_class = VendorDocumentSerializer
     filterset_fields = ["vendor", "doc_type"]
@@ -114,16 +113,6 @@ def vendor_register(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def vendor_products(request):
-    """
-    Vendor Dashboard product listing.
-
-    Approved vendor ko:
-    - vendor-specific override price milega, agar available hai
-    - otherwise Product.vendor_price milega
-
-    Public price yahan use nahi hoga.
-    """
-
     from products.models import Product
 
     try:
@@ -154,15 +143,11 @@ def vendor_products(request):
     results = []
 
     for product in products:
-
-        # Vendor-specific negotiated price
         override = VendorProductPrice.objects.filter(
             product=product,
             vendor=vendor
         ).first()
 
-        # Override available hai to wahi price,
-        # otherwise product ka default vendor_price
         vendor_price = (
             override.price
             if override
@@ -193,11 +178,10 @@ def vendor_products(request):
 
     return Response(results)
 
+
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def vendor_me(request):
-    """Used by the Vendor Dashboard after login: returns the logged-in vendor's own profile,
-    status and summary stats (orders, batteries, customers, scooters, recent activity)."""
     try:
         vendor = Vendor.objects.get(login_user=request.user)
     except Vendor.DoesNotExist:
@@ -215,7 +199,7 @@ def vendor_me(request):
         ]).count(),
         "total_customers": Cust.objects.filter(vendor=vendor).count(),
         "total_scooters": Scooter.objects.filter(vendor=vendor).count(),
-        "total_orders": __import__("crm.models",fromlist=["Sale"]).Sale.objects.filter(vendor=vendor).count(),
+        "total_orders": __import__("crm.models", fromlist=["Sale"]).Sale.objects.filter(vendor=vendor).count(),
     }
     return Response(data)
 
@@ -225,12 +209,20 @@ def vendor_me(request):
 def vendor_add_customer(request):
     from customers.models import Customer
     from customers.serializers import CustomerSerializer
-    vendor=None
-    if request.user.role=="VENDOR":
-        vendor=Vendor.objects.filter(login_user=request.user).first()
-        if not vendor or vendor.status!=Vendor.Status.APPROVED: return Response({"detail":"Vendor is not approved."},status=403)
+    vendor = None
+    if request.user.role == "VENDOR":
+        vendor = Vendor.objects.filter(login_user=request.user).first()
+        if not vendor or vendor.status != Vendor.Status.APPROVED: 
+            return Response({"detail": "Vendor is not approved."}, status=403)
     else:
-        vendor_id=request.data.get("vendor")
-        vendor=Vendor.objects.filter(pk=vendor_id).first() if vendor_id else None
-    data=request.data.copy(); data["vendor"]=vendor.id if vendor else data.get("vendor"); data["salesperson"]=request.user.id if request.user.role=="SALES" else data.get("salesperson")
-    ser=CustomerSerializer(data=data); ser.is_valid(raise_exception=True); obj=ser.save(); return Response(CustomerSerializer(obj).data,status=201)
+        vendor_id = request.data.get("vendor")
+        vendor = Vendor.objects.filter(pk=vendor_id).first() if vendor_id else None
+        
+    data = request.data.copy()
+    data["vendor"] = vendor.id if vendor else data.get("vendor")
+    data["salesperson"] = request.user.id if request.user.role == "SALES" else data.get("salesperson")
+    
+    ser = CustomerSerializer(data=data)
+    ser.is_valid(raise_exception=True)
+    obj = ser.save()
+    return Response(CustomerSerializer(obj).data, status=201)

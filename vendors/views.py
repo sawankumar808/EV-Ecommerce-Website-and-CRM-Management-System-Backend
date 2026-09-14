@@ -3,6 +3,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from .models import Vendor, VendorDocument, VendorActivity, VendorStatusHistory
 from accounts.permissions import AdminOnly, AdminSales, AdminSalesVendor
+from products.models import VendorProductPrice
 from .serializers import (
     VendorSerializer, VendorDetailSerializer, VendorDocumentSerializer, VendorRegistrationSerializer,
 )
@@ -113,27 +114,84 @@ def vendor_register(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def vendor_products(request):
-    """Vendor Dashboard 'Available Products' tab: full catalog with this vendor's applicable price."""
+    """
+    Vendor Dashboard product listing.
+
+    Approved vendor ko:
+    - vendor-specific override price milega, agar available hai
+    - otherwise Product.vendor_price milega
+
+    Public price yahan use nahi hoga.
+    """
+
     from products.models import Product
+
     try:
         vendor = Vendor.objects.get(login_user=request.user)
     except Vendor.DoesNotExist:
-        return Response({"detail": "No vendor profile linked to this account."}, status=404)
+        return Response(
+            {"detail": "No vendor profile linked to this account."},
+            status=404,
+        )
+
     if vendor.status != Vendor.Status.APPROVED:
-        return Response({"detail": "Your account is not yet approved. Prices are hidden until approval."}, status=403)
+        return Response(
+            {
+                "detail": (
+                    "Your account is not yet approved. "
+                    "Prices are hidden until approval."
+                )
+            },
+            status=403,
+        )
 
-    products = Product.objects.filter(status=Product.Status.ACTIVE)
+    products = (
+        Product.objects
+        .filter(status=Product.Status.ACTIVE)
+        .order_by("name")
+    )
+
     results = []
-    for p in products:
-        override = p.vendor_prices.filter(vendor=vendor).first()
-        results.append({
-            "id": p.id, "name": p.name, "model_number": p.model_number, "category": p.category,
-            "description": p.description, "image": p.image.url if p.image else None,
-            "availability": p.availability,
-            "price": str(override.price if override else p.base_price),
-        })
-    return Response(results)
 
+    for product in products:
+
+        # Vendor-specific negotiated price
+        override = VendorProductPrice.objects.filter(
+            product=product,
+            vendor=vendor
+        ).first()
+
+        # Override available hai to wahi price,
+        # otherwise product ka default vendor_price
+        vendor_price = (
+            override.price
+            if override
+            else product.vendor_price
+        )
+
+        results.append({
+            "id": product.id,
+            "name": product.name,
+            "model_number": product.model_number,
+            "sku": product.sku,
+            "category": product.category,
+            "description": product.description,
+            "specifications": product.specifications,
+            "features": product.features,
+            "image": (
+                product.image.url
+                if product.image
+                else None
+            ),
+            "availability": product.availability,
+            "price": (
+                str(vendor_price)
+                if vendor_price is not None
+                else None
+            ),
+        })
+
+    return Response(results)
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])

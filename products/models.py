@@ -1,7 +1,6 @@
 from django.db import models
 from vendors.models import Vendor
 
-
 class Product(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
@@ -12,10 +11,14 @@ class Product(models.Model):
     sku = models.CharField(max_length=100, unique=True)
     category = models.CharField(max_length=100, blank=True)
     description = models.TextField(blank=True)
-    specifications = models.JSONField(default=dict, blank=True, help_text="Key/value spec pairs")
+    specifications = models.TextField(blank=True, help_text="Write specifications")
     features = models.TextField(blank=True, help_text="One feature per line")
     image = models.ImageField(upload_to="products/", blank=True, null=True)
-    base_price = models.DecimalField(max_digits=12, decimal_places=2, help_text="Hidden from visitors; visible to approved vendors")
+    
+    # 2 Alag Prices:
+    public_price = models.DecimalField(max_digits=12, decimal_places=2, help_text="Visible to all regular site visitors")
+    vendor_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, help_text="Special price visible only to logged-in vendors")
+    
     tax_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
     availability = models.BooleanField(default=True)
@@ -24,9 +27,8 @@ class Product(models.Model):
     def __str__(self):
         return self.name
 
-
 class VendorProductPrice(models.Model):
-    """Vendor-specific pricing override."""
+    """Vendor-specific pricing override for individual vendors."""
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name="product_prices")
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="vendor_prices")
     price = models.DecimalField(max_digits=12, decimal_places=2)

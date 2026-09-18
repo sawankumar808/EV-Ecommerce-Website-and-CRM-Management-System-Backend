@@ -13,11 +13,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     """
     CRM Product Management.
 
-    GET:
-        Admin / Sales
-
-    POST / PUT / PATCH / DELETE:
-        Admin only
+    GET / POST / PUT / PATCH / DELETE:
+        Admin / Sales (Allowed for full CRM management)
     """
 
     queryset = Product.objects.all().order_by("name")
@@ -36,10 +33,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     ]
 
     def get_permissions(self):
-        if self.action in ["list", "retrieve"]:
-            return [AdminSales()]
-
-        return [AdminOnly()]
+        # Sabhi actions (list, retrieve, create, update, destroy) ke liye Admin aur Sales dono ko allow kar diya hai
+        return [AdminSales()]
 
 
 class PublicProductViewSet(viewsets.ReadOnlyModelViewSet):
@@ -84,4 +79,4 @@ class VendorProductPriceViewSet(viewsets.ModelViewSet):
     filterset_fields = [
         "vendor",
         "product",
-    ]
+    ]    

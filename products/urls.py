@@ -7,7 +7,7 @@ from .views import (
 
 router = DefaultRouter()
 
-router.register("products", ProductViewSet, basename="products")
+router.register("", ProductViewSet, basename="products")
 router.register(
     "public-products",
     PublicProductViewSet,

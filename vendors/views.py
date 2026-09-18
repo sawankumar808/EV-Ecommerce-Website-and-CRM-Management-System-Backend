@@ -1,110 +1,251 @@
+from django.db import transaction
+
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from .models import Vendor, VendorDocument, VendorActivity, VendorStatusHistory
-from accounts.permissions import AdminOnly, AdminSales, AdminSalesVendor
+
+from .models import (
+    Vendor,
+    VendorDocument,
+    VendorActivity,
+    VendorStatusHistory,
+)
+
+from accounts.permissions import (
+    AdminOnly,
+    AdminSales,
+    AdminSalesVendor,
+)
+
 from products.models import VendorProductPrice
+
 from .serializers import (
-    VendorSerializer, VendorDetailSerializer, VendorDocumentSerializer, VendorRegistrationSerializer,
+    VendorSerializer,
+    VendorDetailSerializer,
+    VendorDocumentSerializer,
+    VendorRegistrationSerializer,
 )
 
 
 class VendorViewSet(viewsets.ModelViewSet):
+
     permission_classes = [AdminSales]
-    serializer_class = VendorSerializer 
+
+    serializer_class = VendorSerializer
+
     queryset = Vendor.objects.all().order_by("-registered_at")
-    filterset_fields = ["status", "business_type", "assigned_salesperson", "city", "state"]
-    search_fields = ["business_name", "contact_person", "mobile_number", "email", "gst_number"]
-    ordering_fields = ["registered_at", "business_name"]
+
+    filterset_fields = [
+        "status",
+        "business_type",
+        "assigned_salesperson",
+        "city",
+        "state",
+    ]
+
+    search_fields = [
+        "business_name",
+        "contact_person",
+        "mobile_number",
+        "email",
+        "gst_number",
+    ]
+
+    ordering_fields = [
+        "registered_at",
+        "business_name",
+    ]
 
     def get_serializer_class(self):
-        if self.action in ['retrieve', 'history']:
+        if self.action in ["retrieve", "history"]:
             return VendorDetailSerializer
+
         return VendorSerializer
 
     def get_queryset(self):
+
         user = self.request.user
+
         if not user or not user.is_authenticated:
             return Vendor.objects.none()
-        
-        # 1. ADMIN aur Superuser sabhi vendors dekh sakte hain
-        if getattr(user, 'role', '') == 'ADMIN' or user.is_superuser:
+
+        if (
+            getattr(user, "role", "") == "ADMIN"
+            or user.is_superuser
+        ):
             return Vendor.objects.all().order_by("-registered_at")
-        
-        # 2. SALES User ke liye: Saare vendors dikhayein (taaki unhein list empty na mile)
-        if getattr(user, 'role', '') == 'SALES':
+
+        if getattr(user, "role", "") == "SALES":
             return Vendor.objects.all().order_by("-registered_at")
-            
-        # 3. Agar User VENDOR role wala hai, toh sirf apna vendor profile dikhao
-        if getattr(user, 'role', '') == 'VENDOR':
-            return Vendor.objects.filter(login_user=user).order_by("-registered_at")
+
+        if getattr(user, "role", "") == "VENDOR":
+            return Vendor.objects.filter(
+                login_user=user
+            ).order_by("-registered_at")
 
         return Vendor.objects.none()
 
-    def _change_status(self, request, new_status, note=""):
-        if getattr(request.user, "role", None) != "ADMIN" and not request.user.is_superuser:
-            return Response({"detail":"Only CRM Admin can change vendor status."}, status=403)
+    def _change_status(
+        self,
+        request,
+        new_status,
+        note=""
+    ):
+
+        if (
+            getattr(request.user, "role", None) != "ADMIN"
+            and not request.user.is_superuser
+        ):
+            return Response(
+                {
+                    "detail":
+                        "Only CRM Admin can change vendor status."
+                },
+                status=403,
+            )
+
         vendor = self.get_object()
+
         old_status = vendor.status
+
         vendor.status = new_status
         vendor.save()
+
         VendorStatusHistory.objects.create(
-            vendor=vendor, from_status=old_status, to_status=new_status,
-            changed_by=request.user if request.user.is_authenticated else None, note=note,
+            vendor=vendor,
+            from_status=old_status,
+            to_status=new_status,
+            changed_by=(
+                request.user
+                if request.user.is_authenticated
+                else None
+            ),
+            note=note,
         )
+
         VendorActivity.objects.create(
-            vendor=vendor, activity_type="STATUS_CHANGE",
-            description=f"Status changed {old_status} -> {new_status}",
+            vendor=vendor,
+            activity_type="STATUS_CHANGE",
+            description=(
+                f"Status changed "
+                f"{old_status} -> {new_status}"
+            ),
         )
-        return Response(VendorSerializer(vendor).data)
 
-    @action(detail=True, methods=["post"])
+        return Response(
+            VendorSerializer(vendor).data
+        )
+
+    @action(
+        detail=True,
+        methods=["post"]
+    )
     def approve(self, request, pk=None):
-        return self._change_status(request, Vendor.Status.APPROVED, request.data.get("note", ""))
+        return self._change_status(
+            request,
+            Vendor.Status.APPROVED,
+            request.data.get("note", ""),
+        )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"]
+    )
     def reject(self, request, pk=None):
-        return self._change_status(request, Vendor.Status.REJECTED, request.data.get("note", ""))
+        return self._change_status(
+            request,
+            Vendor.Status.REJECTED,
+            request.data.get("note", ""),
+        )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"]
+    )
     def request_changes(self, request, pk=None):
-        return self._change_status(request, Vendor.Status.UNDER_REVIEW, request.data.get("note", ""))
+        return self._change_status(
+            request,
+            Vendor.Status.UNDER_REVIEW,
+            request.data.get("note", ""),
+        )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"]
+    )
     def suspend(self, request, pk=None):
-        return self._change_status(request, Vendor.Status.SUSPENDED, request.data.get("note", ""))
+        return self._change_status(
+            request,
+            Vendor.Status.SUSPENDED,
+            request.data.get("note", ""),
+        )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"]
+    )
     def activate(self, request, pk=None):
-        return self._change_status(request, Vendor.Status.APPROVED, request.data.get("note", ""))
+        return self._change_status(
+            request,
+            Vendor.Status.APPROVED,
+            request.data.get("note", ""),
+        )
 
-    @action(detail=True, methods=["get"])
+    @action(
+        detail=True,
+        methods=["get"]
+    )
     def history(self, request, pk=None):
+
         vendor = self.get_object()
-        data = VendorDetailSerializer(vendor).data
+
+        data = VendorDetailSerializer(
+            vendor
+        ).data
+
         return Response(data)
 
 
 class VendorDocumentViewSet(viewsets.ModelViewSet):
+
     permission_classes = [AdminOnly]
+
     queryset = VendorDocument.objects.all()
+
     serializer_class = VendorDocumentSerializer
-    filterset_fields = ["vendor", "doc_type"]
+
+    filterset_fields = [
+        "vendor",
+        "doc_type",
+    ]
 
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def vendor_register(request):
-    """Public endpoint used by the 'Vendor Registration' page on the e-commerce website.
-    No login required. Creates the vendor's login account with status PENDING."""
-    serializer = VendorRegistrationSerializer(data=request.data)
-    serializer.save() if serializer.is_valid(raise_exception=True) else None
-    vendor = serializer.instance
+
+    serializer = VendorRegistrationSerializer(
+        data=request.data
+    )
+
+    serializer.is_valid(
+        raise_exception=True
+    )
+
+    vendor = serializer.save()
+
     return Response(
         {
-            "message": "Registration submitted. You can log in once the CRM Admin approves your account.",
-            "vendor_id": vendor.id,
-            "status": vendor.status,
+            "message":
+                "Registration submitted. "
+                "You can log in once the CRM Admin "
+                "approves your account.",
+
+            "vendor_id":
+                vendor.id,
+
+            "status":
+                vendor.status,
         },
         status=status.HTTP_201_CREATED,
     )
@@ -113,40 +254,53 @@ def vendor_register(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def vendor_products(request):
+
     from products.models import Product
 
-    try:
-        vendor = Vendor.objects.get(login_user=request.user)
-    except Vendor.DoesNotExist:
+    vendor = Vendor.objects.filter(
+        login_user=request.user
+    ).first()
+
+    if not vendor:
         return Response(
-            {"detail": "No vendor profile linked to this account."},
+            {
+                "detail":
+                    "No vendor profile linked to this account."
+            },
             status=404,
         )
 
     if vendor.status != Vendor.Status.APPROVED:
+
         return Response(
             {
-                "detail": (
+                "detail":
                     "Your account is not yet approved. "
                     "Prices are hidden until approval."
-                )
             },
             status=403,
         )
 
     products = (
         Product.objects
-        .filter(status=Product.Status.ACTIVE)
+        .filter(
+            status=Product.Status.ACTIVE
+        )
         .order_by("name")
     )
 
     results = []
 
     for product in products:
-        override = VendorProductPrice.objects.filter(
-            product=product,
-            vendor=vendor
-        ).first()
+
+        override = (
+            VendorProductPrice.objects
+            .filter(
+                product=product,
+                vendor=vendor,
+            )
+            .first()
+        )
 
         vendor_price = (
             override.price
@@ -154,27 +308,33 @@ def vendor_products(request):
             else product.vendor_price
         )
 
-        results.append({
-            "id": product.id,
-            "name": product.name,
-            "model_number": product.model_number,
-            "sku": product.sku,
-            "category": product.category,
-            "description": product.description,
-            "specifications": product.specifications,
-            "features": product.features,
-            "image": (
-                product.image.url
-                if product.image
-                else None
-            ),
-            "availability": product.availability,
-            "price": (
-                str(vendor_price)
-                if vendor_price is not None
-                else None
-            ),
-        })
+        results.append(
+            {
+                "id": product.id,
+                "name": product.name,
+                "model_number": product.model_number,
+                "sku": product.sku,
+                "category": product.category,
+                "description": product.description,
+                "specifications": product.specifications,
+                "features": product.features,
+
+                "image": (
+                    product.image.url
+                    if product.image
+                    else None
+                ),
+
+                "availability":
+                    product.availability,
+
+                "price": (
+                    str(vendor_price)
+                    if vendor_price is not None
+                    else None
+                ),
+            }
+        )
 
     return Response(results)
 
@@ -182,47 +342,475 @@ def vendor_products(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def vendor_me(request):
-    try:
-        vendor = Vendor.objects.get(login_user=request.user)
-    except Vendor.DoesNotExist:
-        return Response({"detail": "No vendor profile linked to this account."}, status=404)
+
+    vendor = Vendor.objects.filter(
+        login_user=request.user
+    ).first()
+
+    if not vendor:
+        return Response(
+            {
+                "detail":
+                    "No vendor profile linked to this account."
+            },
+            status=404,
+        )
 
     from battery.models import Battery
-    from customers.models import Customer as Cust
+    from customers.models import Customer
     from scooters.models import Scooter
+    from crm.models import Sale
 
-    data = VendorDetailSerializer(vendor).data
+    data = VendorDetailSerializer(
+        vendor
+    ).data
+
+    customer_qs = Customer.objects.filter(
+        vendor=vendor
+    ).order_by("-created_at")
+
+    data["customers"] = [
+        {
+            "id": customer.id,
+            "name": customer.name,
+            "mobile": customer.mobile,
+            "email": customer.email,
+            "address": customer.address,
+            "city": customer.city,
+            "state": customer.state,
+            "pincode": customer.pincode,
+            "category": customer.category,
+            "vendor": vendor.id,
+        }
+        for customer in customer_qs
+    ]
+
     data["stats"] = {
-        "total_batteries": Battery.objects.filter(vendor=vendor).count(),
-        "assigned_batteries": Battery.objects.filter(vendor=vendor, status__in=[
-            "ASSIGNED_VENDOR", "SOLD", "ASSIGNED_CUSTOMER", "INSTALLED",
-        ]).count(),
-        "total_customers": Cust.objects.filter(vendor=vendor).count(),
-        "total_scooters": Scooter.objects.filter(vendor=vendor).count(),
-        "total_orders": __import__("crm.models", fromlist=["Sale"]).Sale.objects.filter(vendor=vendor).count(),
+        "total_batteries":
+            Battery.objects.filter(
+                vendor=vendor
+            ).count(),
+
+        "assigned_batteries":
+            Battery.objects.filter(
+                vendor=vendor,
+                status__in=[
+                    "ASSIGNED_VENDOR",
+                    "SOLD",
+                    "ASSIGNED_CUSTOMER",
+                    "INSTALLED",
+                ],
+            ).count(),
+
+        "total_customers":
+            customer_qs.count(),
+
+        "total_scooters":
+            Scooter.objects.filter(
+                vendor=vendor
+            ).count(),
+
+        "total_orders":
+            Sale.objects.filter(
+                vendor=vendor
+            ).count(),
     }
+
     return Response(data)
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 @permission_classes([AdminSalesVendor])
-def vendor_add_customer(request):
+def vendor_customers(request):
+
     from customers.models import Customer
     from customers.serializers import CustomerSerializer
-    vendor = None
-    if request.user.role == "VENDOR":
-        vendor = Vendor.objects.filter(login_user=request.user).first()
-        if not vendor or vendor.status != Vendor.Status.APPROVED: 
-            return Response({"detail": "Vendor is not approved."}, status=403)
+
+    user = request.user
+
+    if user.role == "VENDOR":
+
+        vendor = Vendor.objects.filter(
+            login_user=user
+        ).first()
+
+        if not vendor:
+            return Response(
+                {
+                    "detail":
+                        "Vendor profile not found."
+                },
+                status=404,
+            )
+
+        if vendor.status != Vendor.Status.APPROVED:
+            return Response(
+                {
+                    "detail":
+                        "Vendor is not approved."
+                },
+                status=403,
+            )
+
+        if request.method == "GET":
+
+            customers = Customer.objects.filter(
+                vendor=vendor
+            ).order_by("-created_at")
+
+            return Response(
+                CustomerSerializer(
+                    customers,
+                    many=True
+                ).data
+            )
+
+        data = request.data.copy()
+
+        data["vendor"] = vendor.id
+
+        if not data.get("salesperson"):
+            data["salesperson"] = None
+
     else:
-        vendor_id = request.data.get("vendor")
-        vendor = Vendor.objects.filter(pk=vendor_id).first() if vendor_id else None
-        
-    data = request.data.copy()
-    data["vendor"] = vendor.id if vendor else data.get("vendor")
-    data["salesperson"] = request.user.id if request.user.role == "SALES" else data.get("salesperson")
-    
-    ser = CustomerSerializer(data=data)
-    ser.is_valid(raise_exception=True)
-    obj = ser.save()
-    return Response(CustomerSerializer(obj).data, status=201)
+
+        if request.method == "GET":
+
+            vendor_id = request.query_params.get(
+                "vendor"
+            )
+
+            customers = Customer.objects.all().order_by(
+                "-created_at"
+            )
+
+            if vendor_id:
+                customers = customers.filter(
+                    vendor_id=vendor_id
+                )
+
+            return Response(
+                CustomerSerializer(
+                    customers,
+                    many=True
+                ).data
+            )
+
+        data = request.data.copy()
+
+        vendor_id = data.get("vendor")
+
+        if vendor_id:
+            try:
+                Vendor.objects.get(pk=vendor_id)
+            except Vendor.DoesNotExist:
+                return Response(
+                    {
+                        "detail":
+                            "Vendor not found."
+                    },
+                    status=404,
+                )
+
+        if (
+            user.role == "SALES"
+            and not data.get("salesperson")
+        ):
+            data["salesperson"] = user.id
+
+    serializer = CustomerSerializer(
+        data=data
+    )
+
+    serializer.is_valid(
+        raise_exception=True
+    )
+
+    customer = serializer.save()
+
+    return Response(
+        CustomerSerializer(customer).data,
+        status=201,
+    )
+
+
+@api_view(["PATCH", "PUT", "DELETE"])
+@permission_classes([AdminSalesVendor])
+def vendor_customer_detail(
+    request,
+    pk
+):
+
+    from customers.models import Customer
+    from customers.serializers import CustomerSerializer
+
+    try:
+        customer = Customer.objects.get(
+            pk=pk
+        )
+    except Customer.DoesNotExist:
+        return Response(
+            {
+                "detail":
+                    "Customer not found."
+            },
+            status=404,
+        )
+
+    if request.user.role == "VENDOR":
+
+        vendor = Vendor.objects.filter(
+            login_user=request.user
+        ).first()
+
+        if not vendor or customer.vendor_id != vendor.id:
+            return Response(
+                {
+                    "detail":
+                        "You can only manage your own customers."
+                },
+                status=403,
+            )
+
+    if request.method == "DELETE":
+
+        customer.delete()
+
+        return Response(
+            status=204
+        )
+
+    serializer = CustomerSerializer(
+        customer,
+        data=request.data,
+        partial=True,
+    )
+
+    serializer.is_valid(
+        raise_exception=True
+    )
+
+    customer = serializer.save()
+
+    return Response(
+        CustomerSerializer(customer).data
+    )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def vendor_batteries(request):
+
+    from battery.models import Battery
+    from battery.serializers import BatterySerializer
+
+    vendor = Vendor.objects.filter(
+        login_user=request.user
+    ).first()
+
+    if not vendor:
+        return Response(
+            {
+                "detail":
+                    "Vendor profile not found."
+            },
+            status=404,
+        )
+
+    batteries = Battery.objects.filter(
+        vendor=vendor
+    ).order_by("-added_date")
+
+    return Response(
+        BatterySerializer(
+            batteries,
+            many=True
+        ).data
+    )
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def vendor_scooters(request):
+
+    from scooters.models import Scooter
+    from scooters.serializers import ScooterSerializer
+
+    vendor = Vendor.objects.filter(
+        login_user=request.user
+    ).first()
+
+    if not vendor:
+        return Response(
+            {
+                "detail":
+                    "Vendor profile not found."
+            },
+            status=404,
+        )
+
+    scooters = Scooter.objects.filter(
+        vendor=vendor
+    ).order_by("-created_at")
+
+    status_filter = request.query_params.get(
+        "status"
+    )
+
+    if status_filter:
+        scooters = scooters.filter(
+            status=status_filter
+        )
+
+    return Response(
+        ScooterSerializer(
+            scooters,
+            many=True
+        ).data
+    )
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def vendor_order(request):
+
+    from crm.models import Sale
+    from products.models import Product
+    import uuid
+
+    vendor = Vendor.objects.filter(
+        login_user=request.user
+    ).first()
+
+    if not vendor:
+        return Response(
+            {
+                "detail":
+                    "Vendor profile not found."
+            },
+            status=404,
+        )
+
+    if vendor.status != Vendor.Status.APPROVED:
+        return Response(
+            {
+                "detail":
+                    "Vendor must be approved before placing orders."
+            },
+            status=403,
+        )
+
+    product_id = request.data.get(
+        "product"
+    )
+
+    try:
+        quantity = int(
+            request.data.get(
+                "quantity",
+                1
+            )
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
+        return Response(
+            {
+                "detail":
+                    "Quantity must be a valid number."
+            },
+            status=400,
+        )
+
+    if not product_id:
+        return Response(
+            {
+                "detail":
+                    "Product is required."
+            },
+            status=400,
+        )
+
+    if quantity < 1:
+        return Response(
+            {
+                "detail":
+                    "Quantity must be at least 1."
+            },
+            status=400,
+        )
+
+    try:
+
+        product = Product.objects.get(
+            pk=product_id
+        )
+
+    except Product.DoesNotExist:
+
+        return Response(
+            {
+                "detail":
+                    "Product not found."
+            },
+            status=404,
+        )
+
+    override = VendorProductPrice.objects.filter(
+        product=product,
+        vendor=vendor
+    ).first()
+
+    price = (
+        override.price
+        if override
+        else product.vendor_price
+    )
+
+    if price is None:
+        return Response(
+            {
+                "detail":
+                    "Vendor price is not configured for this product."
+            },
+            status=400,
+        )
+
+    sale = Sale.objects.create(
+        sale_number=
+            f"ORD-{uuid.uuid4().hex[:10].upper()}",
+
+        vendor=vendor,
+
+        product=product,
+
+        amount=price * quantity,
+
+        status="ORDER_REQUESTED",
+
+        created_by=request.user,
+    )
+
+    return Response(
+        {
+            "message":
+                "Order submitted successfully.",
+
+            "order_id":
+                sale.id,
+
+            "sale_number":
+                sale.sale_number,
+
+            "product":
+                product.name,
+
+            "quantity":
+                quantity,
+
+            "amount":
+                str(sale.amount),
+        },
+        status=201,
+    )

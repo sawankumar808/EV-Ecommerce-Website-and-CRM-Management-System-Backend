@@ -1,10 +1,15 @@
+# accounts/admin.py
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, SalesTarget
+from .models import User, CustomRole
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    list_display = ("username", "first_name", "last_name", "role", "phone", "is_active_employee")
-    fieldsets = UserAdmin.fieldsets + ((None, {"fields": ("role", "phone", "employee_id", "is_active_employee")}),)
+    list_display = ('username', 'email', 'first_name', 'last_name', 'role', 'is_staff')
+    fieldsets = UserAdmin.fieldsets + (
+        ('Custom Roles', {'fields': ('role', 'custom_role', 'phone')}),
+    )
 
-admin.site.register(SalesTarget)
+@admin.register(CustomRole)
+class CustomRoleAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category')

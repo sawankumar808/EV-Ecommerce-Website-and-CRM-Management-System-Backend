@@ -1,23 +1,45 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
-from django.conf.urls.static import static
 from django.urls import re_path
 from django.views.static import serve
 
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
 
+from accounts.views import current_user
+from accounts.authentication import (
+    CustomTokenObtainPairSerializer,
+)
+
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+)
+
+from products.views import (
+    PublicProductViewSet,
+)
+
+
+class CRMLoginView(
+    TokenObtainPairView
+):
+    serializer_class = (
+        CustomTokenObtainPairSerializer
+    )
+
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
 
-    # JWT Authentication
+    path(
+        "admin/",
+        admin.site.urls
+    ),
+
     path(
         "api/auth/login/",
-        TokenObtainPairView.as_view(),
+        CRMLoginView.as_view(),
         name="token_obtain_pair",
     ),
 
@@ -27,36 +49,73 @@ urlpatterns = [
         name="token_refresh",
     ),
 
-    # Accounts
-    path("api/", include("accounts.urls")),
+    path(
+        "api/auth/me/",
+        current_user,
+        name="current-user",
+    ),
 
-    # Vendors
-    path("api/", include("vendors.urls")),
+    path(
+        "api/public-products/",
+        PublicProductViewSet.as_view(
+            {
+                "get": "list"
+            }
+        ),
+        name="public-products-direct",
+    ),
 
-    # Products
-    path("api/", include("products.urls")),
+    path(
+        "api/accounts/",
+        include("accounts.urls")
+    ),
 
-    # Battery
-    path("api/", include("battery.urls")),
+    path(
+        "api/vendors/",
+        include("vendors.urls")
+    ),
 
-    # Customers
-    path("api/", include("customers.urls")),
+    path(
+        "api/products/",
+        include("products.urls")
+    ),
 
-    # Scooters
-    path("api/", include("scooters.urls")),
+    path(
+        "api/battery/",
+        include("battery.urls")
+    ),
 
-    # Coupons
-    path("api/", include("coupons.urls")),
+    path(
+        "api/customers/",
+        include("customers.urls")
+    ),
 
-    # CRM
-    path("api/", include("crm.urls")),
+    path(
+        "api/scooters/",
+        include("scooters.urls")
+    ),
+
+    path(
+        "api/coupons/",
+        include("coupons.urls")
+    ),
+
+    path(
+        "api/crm/",
+        include("crm.urls")
+    ),
 ]
 
 
-# Serve uploaded product images/media.
-#
-# Ye DEBUG=False hone par bhi local/server environment me
-# /media/... URLs ko serve karega.
 urlpatterns += [
-    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
+
+    re_path(
+        r"^media/(?P<path>.*)$",
+        serve,
+        {
+            "document_root":
+                settings.MEDIA_ROOT
+        },
+    ),
+
 ]

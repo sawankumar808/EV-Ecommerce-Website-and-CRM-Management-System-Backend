@@ -62,7 +62,17 @@ urlpatterns = [
                 "get": "list"
             }
         ),
-        name="public-products-direct",
+        name="public-products-list",
+    ), 
+
+    path(
+        "api/public-products/<int:pk>/",
+        PublicProductViewSet.as_view(
+            {
+                "get": "retrieve"
+            }
+        ),
+        name="public-product-detail",
     ),
 
     path(
